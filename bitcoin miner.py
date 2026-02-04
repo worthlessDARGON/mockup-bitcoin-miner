@@ -93,7 +93,7 @@ def main():
                     f.write(status_line + "\n")
                 
                 f.flush()
-                time.sleep(0.5)
+                time.sleep(0.001)
                 attempt += 1
         
         except KeyboardInterrupt:
@@ -110,3 +110,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
