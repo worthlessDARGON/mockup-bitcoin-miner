@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bitcoin Miner Mock - Live Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e27;
+            color: #e0e0e0;
+            font-family: 'Roboto Mono', monospace;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #1e90ff;
+            padding-bottom: 15px;
+        }
+
+        h1 {
+            color: #1e90ff;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .subtitle {
+            color: #888;
+            font-size: 14px;
+        }
+
+        .status {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+
+        .stat-box {
+            background: #1a2242;
+            border: 1px solid #1e90ff;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .stat-label {
+            color: #888;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            color: #1e90ff;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        .log-container {
+            background: #0f1419;
+            border: 1px solid #1e90ff;
+            border-radius: 5px;
+            padding: 15px;
+            height: 600px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .log-line {
+            color: #0f0;
+            margin-bottom: 5px;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .log-line.accepted {
+            color: #00ff00;
+        }
+
+        .log-line.rejected {
+            color: #ff6b6b;
+        }
+
+        .log-line.status {
+            color: #ffd700;
+        }
+
+        .log-line.info {
+            color: #87ceeb;
+        }
+
+        .log-empty {
+            color: #666;
+            text-align: center;
+            padding-top: 20px;
+        }
+
+        .controls {
+            margin-top: 15px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        button {
+            background: #1e90ff;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-family: 'Roboto Mono', monospace;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #1978d4;
+        }
+
+        button:active {
+            background: #0f5cc4;
+        }
+
+        .scroll-indicator {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: #1e90ff;
+            color: #fff;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 11px;
+            display: none;
+        }
+
+        .scroll-indicator.show {
+            display: block;
+        }
+
+        footer {
+            margin-top: 30px;
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            border-top: 1px solid #1e90ff;
+            padding-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⛏ Bitcoin Miner Mock</h1>
+            <p class="subtitle">Live Dashboard — Real-time Mining Simulator</p>
+        </header>
+
+        <div class="status">
+            <div class="stat-box">
+                <div class="stat-label">Accepted Shares</div>
+                <div class="stat-value" id="accepted">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Rejected Shares</div>
+                <div class="stat-value" id="rejected">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Hashrate</div>
+                <div class="stat-value" id="hashrate">0 MH/s</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">Status</div>
+                <div class="stat-value" id="status" style="color: #ffd700;">Waiting...</div>
+            </div>
+        </div>
+
+        <div class="log-container" id="logContainer">
+            <div class="log-empty">Waiting for logs...</div>
+            <div class="scroll-indicator" id="scrollIndicator">↓ scroll for more</div>
+        </div>
+
+        <div class="controls">
+            <button onclick="clearLogs()">Clear Logs</button>
+            <button onclick="downloadLogs()">Download Log</button>
+        </div>
+
+        <footer>
+            <p>Updates every 500ms | Refresh the page to reconnect</p>
+        </footer>
+    </div>
+
+    <script>
+        let logData = [];
+        let lastLength = 0;
+
+        async function fetchLogs() {
+            try {
+                const response = await fetch('miner.log');
+                if (!response.ok) {
+                    document.getElementById('status').textContent = '⚠ No log file';
+                    return;
+                }
+                const text = await response.text();
+                const lines = text.trim().split('\n').filter(line => line.length > 0);
+                
+                logData = lines;
+                
+                // Parse stats from logs
+                updateStats(lines);
+                
+                // Render logs
+                renderLogs(lines);
+                
+                // Update status
+                if (lines.length > 0) {
+                    document.getElementById('status').textContent = '● Mining...';
+                    document.getElementById('status').style.color = '#00ff00';
+                }
+            } catch (error) {
+                document.getElementById('status').textContent = '● Mining...';
+                document.getElementById('status').style.color = '#00ff00';
+            }
+        }
+
+        function updateStats(lines) {
+            let accepted = 0, rejected = 0, hashrate = 0;
+            
+            lines.forEach(line => {
+                if (line.includes('Accepted')) {
+                    accepted++;
+                } else if (line.includes('Rejected')) {
+                    rejected++;
+                } else if (line.includes('Status:')) {
+                    const match = line.match(/(\d+\.?\d*)\s*MH\/s/);
+                    if (match) hashrate = parseFloat(match[1]);
+                }
+            });
+            
+            document.getElementById('accepted').textContent = accepted;
+            document.getElementById('rejected').textContent = rejected;
+            document.getElementById('hashrate').textContent = hashrate.toFixed(2) + ' MH/s';
+        }
+
+        function renderLogs(lines) {
+            const container = document.getElementById('logContainer');
+            
+            if (lines.length === 0) {
+                container.innerHTML = '<div class="log-empty">Waiting for logs...</div>';
+                return;
+            }
+            
+            const shouldScroll = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
+            
+            container.innerHTML = lines.map(line => {
+                let className = 'log-line';
+                if (line.includes('Accepted')) className += ' accepted';
+                else if (line.includes('Rejected')) className += ' rejected';
+                else if (line.includes('Status:')) className += ' status';
+                else if (line.includes('[')) className += ' info';
+                
+                return `<div class="${className}">${escapeHtml(line)}</div>`;
+            }).join('');
+            
+            // Auto-scroll to bottom if user was already at bottom
+            if (shouldScroll) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            };
+            return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        function clearLogs() {
+            logData = [];
+            document.getElementById('logContainer').innerHTML = '<div class="log-empty">Logs cleared. Waiting for new logs...</div>';
+            document.getElementById('accepted').textContent = '0';
+            document.getElementById('rejected').textContent = '0';
+            document.getElementById('hashrate').textContent = '0 MH/s';
+        }
+
+        function downloadLogs() {
+            if (logData.length === 0) {
+                alert('No logs to download');
+                return;
+            }
+            const content = logData.join('\n');
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `miner_${new Date().toISOString().slice(0, 10)}.log`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Fetch logs every 500ms
+        setInterval(fetchLogs, 500);
+        fetchLogs(); // Initial fetch
+    </script>
+</body>
+</html>
